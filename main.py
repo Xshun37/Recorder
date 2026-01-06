@@ -1,7 +1,10 @@
-import subprocess
-import sys
+# /main.py
 from pathlib import Path
 from datetime import datetime
+from record import record_audio
+from transcribe_s import transcribe
+from summarize import summarize_file
+from make_md import generate_md
 
 BASE = Path(__file__).resolve().parent
 RECORDS = BASE / "records"
@@ -11,34 +14,34 @@ ts = datetime.now().strftime("%Y-%m-%d_%H-%M")
 out_dir = RECORDS / ts
 out_dir.mkdir(exist_ok=True)
 
-wav = out_dir / "audio.wav"
-txt = out_dir / "audio.txt"
+wav_file = out_dir / "audio.wav"
 
 dur = input("Enter recording duration in seconds (blank = manual stop): ").strip()
+duration = int(dur) if dur else None
 
 print("===== Recording =====")
-cmd = ["python", str(BASE / "record.py"), str(wav)]
-if dur:
-    cmd.append(dur)
-
-subprocess.run(cmd, check=True)
+record_audio(str(wav_file), duration=duration)
 
 print("===== Transcribing =====")
-subprocess.run(
-    ["python", str(BASE / "transcribe_s.py"), str(wav)],
-    check=True
-)
+txt_file = transcribe(str(wav_file))
+if not txt_file:
+    print("Transcription failed.")
+    exit(1)
 
 print("===== Summarizing =====")
-subprocess.run(
-    ["python", str(BASE / "summarize.py"), str(txt)],
-    check=True
-)
+summary_file = summarize_file(str(txt_file))
+if not summary_file:
+    print("Summarization failed.")
+    exit(1)
 
 print("===== Generating Markdown =====")
-subprocess.run(
-    ["python", str(BASE / "make_md.py"), str(txt)],
-    check=True
-)
+md_file = generate_md(str(txt_file))
+if not md_file:
+    print("Markdown generation failed.")
+    exit(1)
 
 print("===== All done =====")
+print(f"WAV: {wav_file}")
+print(f"TXT: {txt_file}")
+print(f"SUMMARY: {summary_file}")
+print(f"Markdown: {md_file}")

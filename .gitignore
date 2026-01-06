@@ -1,0 +1,8 @@
+download.zip
+.venv
+__pycache__/
+*.pyc
+.env
+
+extracted
+records
