@@ -7,7 +7,7 @@
   git clone <repo-url>
   cd Recorder
   ```
-
+https://github.com/Xshun37/Recorder
 2) 安装 Python（如果电脑没有）
 - 访问 https://www.python.org/downloads/windows/ 下载 Windows Installer（3.10+），运行安装程序并勾选“Add Python to PATH”。
 - 安装后在开始菜单打开“命令提示符（Command Prompt）”，输入 `python --version` 验证。
@@ -29,12 +29,14 @@
 - 下载地址：https://vb-audio.com/Cable/
 - 解压后以管理员身份运行 `VBCABLE_Setup_x64.exe`，安装完成后建议重启。
 - 安装成功后，系统的录音设备列表应出现：`CABLE Output (VB-Audio Virtual Cable)`。
+- 为了让fffmpeg能录制机内音源，需要将声音-输出改为**Cable-Input**，输入改为**Cable-Output**
 
 6) 检查 ffmpeg
 - 仓库中一般包含 `ffmpeg.exe`，无需额外安装。如果没有，可从 https://ffmpeg.org/ 下载并放在仓库根目录或加入 PATH。
 - 验证：在命令行运行 `ffmpeg -version`。
 
 7) 设置 DeepSeek API Key（用于自动总结）
+- 在Deepseek API开放平台申请一个API
 - Windows GUI：开始 → 输入“环境变量” → 编辑用户变量 → 新建 `DEEPSEEK_API_KEY`，填入你的 Key。
 - 命令行（永久）：
   ```powershell
