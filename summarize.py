@@ -3,223 +3,171 @@ import sys
 import requests
 import json
 import time
+import re
 from pathlib import Path
 
 # -----------------------------
-# 配置
+# 配置与全局变量
 # -----------------------------
 API_KEY = os.getenv("DEEPSEEK_API_KEY")
 if not API_KEY:
-    raise RuntimeError("Please set DEEPSEEK_API_KEY environment variable")
+    raise RuntimeError("请设置 DEEPSEEK_API_KEY 环境变量")
 
-CHUNK_SIZE = 3000
-MIN_CHUNK_SIZE = 500
-
-INITIAL_MAX_TOKENS = 1200
-GROUP_MAX_TOKENS = 1300
-FINAL_MAX_TOKENS = 1500
-REFINE_MAX_TOKENS = 1500
-
-GROUP_SIZE = 4
+CHUNK_SIZE = 300000  
+OVERLAP_SIZE = 10000
 RETRIES = 3
-RETRY_DELAY = 2
+MAX_CONTEXT_TOKENS_LIMIT = 900000 
+
+# 1. 一次性处理模式 (One-shot) - 优先使用
+FULL_SUMMARY_PROMPT = (
+    "你是一位深耕生物化学与分子生物学领域的资深学术专家。请对以下整堂分子生物学课的录音转录文本进行系统性建模。\n\n"
+    "任务要求：\n"
+    "1. 【逻辑建模】：不要简单列举，请梳理出知识点的演进逻辑（例如：从实验矛盾出发，引出机制 A，再到调控机制 B 的发现），同时尽可能按照讲课顺序组织内容。\n"
+    "2. 【深度提取】：保留核心机制、关键酶名称、蛋白质复合体及重要的动力学/结构参数。\n"
+    "3. 【重点标记】：突出老师在讲解中反复提及或明确指出的难点和重点（Exam Points）。\n"
+    "4. 【格式规约】：使用 Markdown 标题层级，专业术语首次出现请保留英文原文。\n"
+    "5. 【语言要求】：全文使用精准、专业的学术中文输出。不要加入无关的开场白、礼貌性回复。\n\n"
+    "待处理文本内容：\n{content}"
+)
+
+# 2. 多块处理模式 (Multi-chunk) - 备用方案
+SECTION_PROMPT = (
+    "你是一位生物化学助教。请对以下讲义片段进行精炼总结。\n"
+    "要求：仅提取核心机制与逻辑推导，术语保留英文缩写，即使输入是英文也请使用中文总结，字数控制在原片段 10%-15%。\n\n"
+    "待总结文本：\n{content}"
+)
+
+GLOBAL_PROMPT = (
+    "你是一位专业的生物医学分析专家。请根据各段摘要，构建整堂课的【逻辑脉络图】。\n"
+    "要求：使用中文梳理知识点递进关系，字数控制在 800 字以内。\n\n"
+    "段落摘要列表：\n{content}"
+)
+
+REFINE_PROMPT = (
+    "【全局逻辑】：{global_summary}\n"
+    "【上文简述】：{prev_summary}\n\n"
+    "任务：结合全局逻辑将当前草稿修整为【极简复习笔记】。要求：去重优先，严禁扩充，Markdown 列表形式，单段限 400 字内，统一中文。"
+)
 
 # -----------------------------
-# 输入文件
+# 核心功能函数
 # -----------------------------
-if len(sys.argv) >= 2:
-    txt_path = Path(sys.argv[1]).resolve()
-else:
-    txt_path = Path("test.s.txt").resolve()
 
-if not txt_path.exists():
-    print(f"File not found: {txt_path}")
-    sys.exit(1)
-
-text_content = txt_path.read_text(encoding="utf-8")
-
-# -----------------------------
-# 分段
-# -----------------------------
-def split_text(text, chunk_size=CHUNK_SIZE):
-    chunks = []
-    start = 0
-    while start < len(text):
-        end = start + chunk_size
-        if end < len(text):
-            newline_pos = text.rfind("\n", start, end)
-            if newline_pos != -1:
-                end = newline_pos
-        chunks.append(text[start:end].strip())
-        start = end
-    return chunks
-
-# -----------------------------
-# API 调用
-# -----------------------------
-def call_deepseek(prompt, max_tokens):
+def call_deepseek(prompt, max_tokens=3000):
+    """调用 DeepSeek V4-Pro 接口"""
     url = "https://api.deepseek.com/v1/chat/completions"
     payload = {
-        "model": "deepseek-reasoner",
+        "model": "deepseek-v4-pro",
         "messages": [{"role": "user", "content": prompt}],
-        "max_tokens": max_tokens
+        "max_tokens": max_tokens,
+        "reasoning_effort": "max",  # 确保键名有引号，使用冒号
+        "extra_body": {
+            "thinking": {
+                "type": "enabled"
+            }
+        }
     }
+    
     headers = {
         "Authorization": f"Bearer {API_KEY}",
         "Content-Type": "application/json"
     }
-    resp = requests.post(url, headers=headers, data=json.dumps(payload))
-    resp.raise_for_status()
-    return resp.json()["choices"][0]["message"]["content"].strip()
 
-def call_with_retry(prompt, max_tokens):
-    for attempt in range(1, RETRIES + 1):
+    for i in range(RETRIES):
         try:
-            return call_deepseek(prompt, max_tokens)
-        except requests.HTTPError as e:
-            print(f"Attempt {attempt} failed: {e}")
-            if attempt < RETRIES:
-                time.sleep(RETRY_DELAY)
-            else:
-                raise
+            # V4 处理长文本时计算耗时较长，增加 timeout
+            resp = requests.post(url, headers=headers, json=payload, timeout=300)
+            resp.raise_for_status()
+            return resp.json()["choices"][0]["message"]["content"].strip()
+        except Exception as e:
+            print(f"API 请求失败，重试 ({i+1}/{RETRIES}): {e}")
+            time.sleep(5)
+    return "[此部分处理失败]"
 
-def summarize_smart(prompt, max_tokens):
-    prompt = prompt.encode("utf-8", errors="ignore").decode("utf-8")
-    try:
-        return call_with_retry(prompt, max_tokens)
-    except requests.HTTPError as e:
-        if e.response.status_code == 400:
-            if len(prompt) <= MIN_CHUNK_SIZE:
-                return "[Error in this chunk]"
-            mid = len(prompt) // 2
-            left = summarize_smart(prompt[:mid], max_tokens)
-            right = summarize_smart(prompt[mid:], max_tokens)
-            return left + "\n\n" + right
-        else:
-            raise
+def split_text_with_overlap(text, chunk_size, overlap):
+    chunks = []
+    start = 0
+    while start < len(text):
+        end = start + chunk_size
+        chunks.append(text[start:end].strip())
+        if end >= len(text):
+            break
+        start = end - overlap
+    return chunks
 
 # -----------------------------
-# 通用 Prompt 模板（安全写法）
+# 主程序逻辑
 # -----------------------------
 
-SECTION_PROMPT = (
-    "You are a domain-agnostic expert reader and technical summarizer.\n\n"
-    "Task:\n"
-    "Summarize the following text in clear, accurate Chinese.\n\n"
-    "Requirements:\n"
-    "- Preserve all key concepts, definitions, mechanisms, and logical relationships\n"
-    "- Do NOT oversimplify technical content\n"
-    "- Do NOT introduce information not present in the text\n"
-    "- Maintain the original structure and emphasis\n"
-    "- Use precise terminology; keep specialized terms unchanged\n"
-    "- Focus strictly on this section only\n\n"
-    "Text:\n"
-    "{content}"
-)
+def main():
+    # 文件读取逻辑
+    if len(sys.argv) < 2:
+        input_path = Path("audio.s.txt")
+    else:
+        input_path = Path(sys.argv[1]).with_suffix(".s.txt")
 
-MERGE_PROMPT = (
-    "You are a domain-agnostic expert summarizer.\n\n"
-    "Task:\n"
-    "Merge the following section summaries into a coherent Chinese summary.\n\n"
-    "Requirements:\n"
-    "- Retain all important points and technical terminology\n"
-    "- Preserve logical structure\n"
-    "- Do NOT add external knowledge\n\n"
-    "Summaries:\n"
-    "{content}"
-)
+    if not input_path.exists():
+        print(f"错误：找不到输入文件 {input_path}")
+        return
 
-GLOBAL_PROMPT = (
-    "You are a domain-agnostic expert analyst.\n\n"
-    "Task:\n"
-    "Produce a comprehensive global overview of the following summaries.\n\n"
-    "Requirements:\n"
-    "- Capture overall structure and themes\n"
-    "- Identify key mechanisms and conceptual relations\n"
-    "- Do NOT add external information\n\n"
-    "Content:\n"
-    "{content}"
-)
+    print(f"正在读取文件: {input_path.name}")
+    content = input_path.read_text(encoding="utf-8")
+    
+    # 估算 Tokens (V4 编码器下中文约 0.6 字符/token，英文约 4 字符/token，取保守中间值)
+    estimated_tokens = len(content) * 1.5 
+    print(f"预估 Token 数: ~{int(estimated_tokens):,}")
 
-REFINE_PROMPT = (
-    "You are a domain-agnostic expert editor.\n\n"
-    "GLOBAL OVERVIEW (context):\n"
-    "{global_summary}\n\n"
-    "SECTION SUMMARY:\n"
-    "{section}\n\n"
-    "Task:\n"
-    "Rewrite and expand the section summary in Chinese so that it is:\n"
-    "- More detailed and complete\n"
-    "- Consistent with the global overview\n"
-    "- Focused ONLY on this section\n"
-    "- Clear in logical structure\n\n"
-    "Do NOT summarize the entire text."
-)
+    # --- 策略 A：一键全量总结 (One-shot) ---
+    if estimated_tokens < MAX_CONTEXT_TOKENS_LIMIT:
+        print("💡 文本在 V4-Pro 上下文范围内，启动『上帝视角』全量总结模式...")
+        
+        final_result = call_deepseek(FULL_SUMMARY_PROMPT.format(content=content), max_tokens=8000)
+        
+        output_header = "="*50 + "\n深度学术总结 (DeepSeek V4-Pro)\n" + "="*50 + "\n\n"
+        output_path = input_path.with_suffix(".summary.txt")
+        output_path.write_text(output_header + final_result, encoding="utf-8")
+        print(f"总结完成！已保存至: {output_path}")
+        return
 
+    # --- 策略 B：多块级联处理 (当文本异常巨大时) ---
+    print(f"⚠️ 文本量过大，正在进行分块处理 (每块 {CHUNK_SIZE} 字符)...")
+    chunks = split_text_with_overlap(content, CHUNK_SIZE, OVERLAP_SIZE)
+    
+    # 1. 分段摘要
+    initial_summaries = []
+    for i, chunk in enumerate(chunks, 1):
+        print(f"正在处理第 {i}/{len(chunks)} 个片段...")
+        s = call_deepseek(SECTION_PROMPT.format(content=chunk), max_tokens=2000)
+        initial_summaries.append(s)
 
-# -----------------------------
-# 1. 初步 chunk 总结
-# -----------------------------
-chunks = split_text(text_content)
-initial_summaries = []
+    # 2. 生成全局脉络
+    print("正在构建全局逻辑地图...")
+    combined_notes = "\n".join([f"【片段 {idx+1}】\n{txt}" for idx, txt in enumerate(initial_summaries)])
+    global_context = call_deepseek(GLOBAL_PROMPT.format(content=combined_notes), max_tokens=2000)
 
-for i, chunk in enumerate(chunks, 1):
-    print(f"Summarizing chunk {i}/{len(chunks)}...")
-    lines = chunk.split("\n")
-    head = "\n".join(lines[:2]) if len(lines) >= 2 else chunk
+    # 3. 循环精炼
+    print("正在根据全局逻辑进行最终精炼...")
+    final_summaries = []
+    prev_s = "开头部分"
+    for i, s_draft in enumerate(initial_summaries, 1):
+        print(f"正在精炼第 {i}/{len(initial_summaries)} 段...")
+        refined = call_deepseek(REFINE_PROMPT.format(
+            global_summary=global_context,
+            prev_summary=prev_s,
+            section=s_draft
+        ), max_tokens=1500)
+        final_summaries.append(refined)
+        prev_s = refined[:300]
 
-    prompt = SECTION_PROMPT.format(
-        content=f"[Section preview]\n{head}\n\n{chunk}"
-    )
+    # 保存分块总结结果
+    output_path = input_path.with_suffix(".summary.txt")
+    with open(output_path, "w", encoding="utf-8") as f:
+        f.write("="*50 + "\n课程全局逻辑脉络\n" + "="*50 + "\n")
+        f.write(global_context + "\n\n")
+        f.write("="*50 + "\n详细分段笔记\n" + "="*50 + "\n")
+        f.write("\n\n".join([f"## 部分 {i}\n{s}" for i, s in enumerate(final_summaries, 1)]))
+    
+    print(f"多级总结完成！结果已保存至: {output_path}")
 
-    s = summarize_smart(prompt, INITIAL_MAX_TOKENS)
-    initial_summaries.append(s)
-
-# -----------------------------
-# 2. 小组汇总
-# -----------------------------
-def group_summarize(summaries):
-    result = []
-    total = (len(summaries) + GROUP_SIZE - 1) // GROUP_SIZE
-    for i in range(0, len(summaries), GROUP_SIZE):
-        print(f"Summarizing group {i//GROUP_SIZE + 1}/{total}...")
-        group_text = "\n\n".join(summaries[i:i + GROUP_SIZE])
-        prompt = MERGE_PROMPT.format(content=group_text)
-        s = summarize_smart(prompt, GROUP_MAX_TOKENS)
-        result.append(s)
-    return result
-
-group_summaries = group_summarize(initial_summaries)
-
-# -----------------------------
-# 3. 全局总结（仅作背景）
-# -----------------------------
-print("Generating global overview (context only)...")
-global_prompt = GLOBAL_PROMPT.format(content="\n\n".join(group_summaries))
-global_summary = summarize_smart(global_prompt, FINAL_MAX_TOKENS)
-
-# -----------------------------
-# 4. 回写增强
-# -----------------------------
-def refine_with_global(chunks, global_summary):
-    refined = []
-    for i, chunk_summary in enumerate(chunks, 1):
-        print(f"Refining chunk {i}/{len(chunks)}...")
-        prompt = REFINE_PROMPT.format(
-            global_summary=global_summary,
-            section=chunk_summary
-        )
-        s = summarize_smart(prompt, REFINE_MAX_TOKENS)
-        refined.append(s)
-    return refined
-
-refined_summaries = refine_with_global(initial_summaries, global_summary)
-
-# -----------------------------
-# 5. 输出
-# -----------------------------
-out_file = txt_path.with_suffix(".s.summary.txt")
-out_text = "\n\n".join(refined_summaries)
-out_file.write_text(out_text, encoding="utf-8")
-
-print(f"Summary completed. Output file: {out_file}")
+if __name__ == "__main__":
+    main()
