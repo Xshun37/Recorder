@@ -9,7 +9,6 @@
 快速上手（推荐，不懂命令行也可完成）
 
 1) 获取代码
-- 从 GitHub 下载 ZIP 并解压，或在会用 Git 的情况下：
   ```powershell
   git clone <repo-url>
   cd Recorder
