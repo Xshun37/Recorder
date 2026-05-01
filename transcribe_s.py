@@ -1,3 +1,4 @@
+import os
 import sys
 import subprocess
 from pathlib import Path
@@ -12,10 +13,18 @@ audio = Path(sys.argv[1]).resolve()
 out_dir = audio.parent
 
 # 1. 调用 whisper（自动检测语言）
+device = os.getenv("WHISPER_DEVICE")
+if not device:
+    try:
+        import torch
+        device = "cuda" if torch.cuda.is_available() else "cpu"
+    except Exception:
+        device = "cpu"
+
 cmd = [
     sys.executable, "-m", "whisper",
     str(audio),
-    "--device", "cuda",
+    "--device", device,
     "--model", "medium",
     "--language", "English",
     "--initial_prompt", "English lesson, some Chinese explanation, grammar, vocabulary.",

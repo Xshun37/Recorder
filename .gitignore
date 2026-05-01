@@ -1,1 +1,10 @@
-\records
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+env/
+# Records
+records/
+# VSCode
+.vscode/

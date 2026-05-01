@@ -1,0 +1,9 @@
+# Requirements for Recorder
+
+requests
+openai>=1.0.0
+opencc-python-reimplemented
+openai-whisper
+tqdm
+
+# Note: Install PyTorch separately to match your CUDA/CPU configuration (see README.md)
