@@ -28,7 +28,34 @@ for _ in range(5):
         break
     _env_dir = _env_dir.parent
 
-ZOTERO_DB = Path(r"F:\文献\zotero.sqlite")
+def _find_zotero_db():
+    """Auto-detect Zotero database, or use env var."""
+    env = os.getenv("ZOTERO_DB_PATH", "")
+    if env and Path(env).exists():
+        return Path(env)
+
+    # Scan default profile locations
+    candidates = []
+    appdata = os.getenv("APPDATA", "")
+    if appdata:
+        profiles = Path(appdata) / "Zotero" / "Zotero" / "Profiles"
+        if profiles.exists():
+            for p in profiles.glob("*.default"):
+                db = p / "zotero.sqlite"
+                if db.exists():
+                    candidates.append(db)
+        # Also check direct Zotero data dir
+        direct = Path(appdata) / "Zotero" / "zotero.sqlite"
+        if direct.exists():
+            candidates.append(direct)
+
+    if candidates:
+        return max(candidates, key=lambda p: p.stat().st_mtime)  # newest
+    return None
+
+ZOTERO_DB = _find_zotero_db()
+if not ZOTERO_DB:
+    print("[WARN] Zotero DB not found. Set ZOTERO_DB_PATH env var or ensure Zotero is installed.")
 API_KEY = os.getenv("QWEN_API_KEY", "")
 BASE_URL = "https://dashscope.aliyuncs.com/compatible-mode/v1"
 MODEL = "qwen3.7-plus"
