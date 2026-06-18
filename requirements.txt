@@ -5,5 +5,8 @@ openai>=1.0.0
 opencc-python-reimplemented
 openai-whisper
 tqdm
+beautifulsoup4
+lxml
+selenium>=4.6.0
 
 # Note: Install PyTorch separately to match your CUDA/CPU configuration (see README.md)

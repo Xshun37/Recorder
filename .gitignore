@@ -4,7 +4,17 @@ __pycache__/
 .venv/
 venv/
 env/
+
+# Secrets
+.env
+
 # Records
 records/
+
 # VSCode
 .vscode/
+
+# Temp files
+*.tmp.m3u8
+*_hls_temp.*
+debug_*.html
