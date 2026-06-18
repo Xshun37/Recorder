@@ -1,0 +1,22 @@
+# Recorder — 共享依赖
+
+# === 录音 + 转录 + 总结 (recorder/) ===
+requests
+openai>=1.0.0
+opencc-python-reimplemented
+openai-whisper
+tqdm
+beautifulsoup4
+lxml
+selenium>=4.6.0
+# PyTorch: 单独安装，匹配 CUDA/CPU (见 README)
+
+# === 课件下载 + AI 分析 (pku-downloader/) ===
+pillow
+pymupdf
+python-pptx
+pywin32
+
+# === 公共 ===
+python-dotenv
+urllib3

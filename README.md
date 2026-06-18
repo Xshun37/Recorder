@@ -28,16 +28,16 @@ copy .env.example .env
 setx DEEPSEEK_API_KEY "sk-xxxxxxxx"  # DeepSeek API Key
 
 # 4. 运行
-python lecture.py
+python recorder/lecture.py
 ```
 
 ## 工作模式
 
 | 模式 | 命令 | 说明 |
 |------|------|------|
-| **HLS 直下** (默认) | `python lecture.py` | Selenium 抓取 m3u8 → ffmpeg 直下音频 (无实时播放，极快) |
-| Stream 录制 | `python lecture.py --mode stream` | 浏览器实时播放 + 系统音频录制 (需 VB-Cable) |
-| 断点续传 | `python lecture.py --resume` | 扫描已下载/已转录文件，接着跑 |
+| **HLS 直下** (默认) | `python recorder/lecture.py` | Selenium 抓取 m3u8 → ffmpeg 直下音频 |
+| Stream 录制 | `python recorder/lecture.py --mode stream` | 浏览器实时播放 + 系统音频录制 |
+| 断点续传 | `python recorder/lecture.py --resume` | 扫描已下载/已转录文件，接着跑 |
 
 ### HLS 模式流程
 
@@ -49,15 +49,13 @@ python lecture.py
 ```
 
 ```powershell
-python lecture.py --workers 8 --summarize-workers 12  # 调并发
+python recorder/lecture.py --workers 8 --summarize-workers 12
 ```
 
 ### Stream 模式 (fallback)
 
-需安装 [VB-Audio Virtual Cable](https://vb-audio.com/Cable/)，浏览器音频路由到 VB-Cable 后运行：
-
 ```powershell
-python lecture.py --mode stream --speed 2.0
+python recorder/lecture.py --mode stream --speed 2.0
 ```
 
 ## Cookie 获取
@@ -146,8 +144,8 @@ pip install openai pillow pymupdf python-pptx pywin32 python-dotenv
 使用 recorder 已有的 `.env` 即可（Cookie + API Key 已配置）。
 
 ```bash
-python scripts/main.py --all          # 全流程：下载→转换→导入→分析→笔记
-python scripts/main.py --course "分子生物学" --skip-analysis  # 仅下载+导入
+python pku-downloader/scripts/main.py --all
+python pku-downloader/scripts/main.py --course "分子生物学" --skip-analysis
 ```
 
 ## 管道流程
