@@ -1,4 +1,4 @@
-"""教学网视频 + 自动笔记 — 全自动流水线 (HLS 直下 + Stream fallback)
+﻿"""教学网视频 + 自动笔记 — 全自动流水线 (HLS 直下 + Stream fallback)
 
 用法:
     python lecture.py                          # 交互式选择，默认 HLS 直下

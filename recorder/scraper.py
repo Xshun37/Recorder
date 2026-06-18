@@ -1,4 +1,4 @@
-"""教学网视频列表抓取 — 从课程URL提取所有视频元数据"""
+﻿"""教学网视频列表抓取 — 从课程URL提取所有视频元数据"""
 import os, sys, json, base64, re, urllib.parse
 import requests
 from bs4 import BeautifulSoup
@@ -10,7 +10,7 @@ COURSE_HOST = "https://course.pku.edu.cn"
 
 def load_cookies():
     """从 .env 加载 Cookie，返回 {name: value}"""
-    env_file = BASE / ".env"
+    env_file = BASE.parent / ".env"
     cookies = {}
 
     if env_file.exists():

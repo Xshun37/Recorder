@@ -1,4 +1,4 @@
-"""教学网视频 — Selenium 播放 (stream 模式) + HLS 直下 (download 模式)"""
+﻿"""教学网视频 — Selenium 播放 (stream 模式) + HLS 直下 (download 模式)"""
 import time
 import re
 import json
@@ -27,7 +27,7 @@ if not Path(FFMPEG).exists():
 
 def _load_cookies():
     """加载 Cookie，返回 [(name, value, domain), ...]"""
-    env_file = BASE / ".env"
+    env_file = BASE.parent / ".env"
     cookies = []
     if env_file.exists():
         for line in env_file.read_text(encoding="utf-8").splitlines():
@@ -373,7 +373,7 @@ def download_hls_audio(m3u8_url, output_wav, timeout=1800):
     key_url = key_match.group(1)
     # 加载 cookie 获取 _token
     token_cookie = None
-    env_file = BASE / ".env"
+    env_file = BASE.parent / ".env"
     if env_file.exists():
         for line in env_file.read_text(encoding="utf-8").splitlines():
             if line.strip().startswith("COOKIE__token="):

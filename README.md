@@ -2,6 +2,13 @@
 
 自动抓取 PKU 教学网 (Blackboard Learn) 课程视频，提取音频，Whisper 转写，DeepSeek 生成结构化笔记。
 
+## 主程序入口
+
+| 入口 | 功能 |
+|------|------|
+| `recorder/lecture.py` | 录音 + 转录 + AI 笔记 |
+| `pku-downloader/scripts/main.py` | 课件下载 + AI 解析 + Zotero 导入 |
+
 ## 快速开始
 
 ```powershell
@@ -120,3 +127,59 @@ records/
 ## 隐私
 
 所有数据（音频、文本、笔记）均保存在本地 `records/` 目录下，不上传到任何服务器（除 DeepSeek API 用于摘要生成）。
+
+---
+
+# PKU Course Downloader + AI Slide Analyzer
+
+下载北京大学教学网 (Blackboard) 课程资料，使用 Qwen 视觉模型自动解析 PPT/PDF 课件，将 AI 教学笔记注入 Zotero 以便学习。
+
+## 快速开始
+
+```bash
+cd pku-downloader
+python -m venv venv
+venv\Scripts\activate
+pip install openai pillow pymupdf python-pptx pywin32 python-dotenv
+```
+
+使用 recorder 已有的 `.env` 即可（Cookie + API Key 已配置）。
+
+```bash
+python scripts/main.py --all          # 全流程：下载→转换→导入→分析→笔记
+python scripts/main.py --course "分子生物学" --skip-analysis  # 仅下载+导入
+```
+
+## 管道流程
+
+```
+PPT/PDF 文件
+  → PyMuPDF / PowerPoint COM 渲染为图片
+    → Qwen3.7-Plus 视觉模型 (12 线程并发)
+      → 每页中文 HTML 分析输出
+        → 合并为 Zotero 子笔记
+```
+
+## 文件结构
+
+| 文件 | 用途 |
+|------|------|
+| `scripts/main.py` | 主编排：下载→PPT转PDF→导入Zotero→分析→笔记 |
+| `scripts/pipeline_core.py` | 核心引擎：PDF渲染、Qwen分析、Zotero写入 |
+| `scripts/auth.py` | PKU 教学网认证 |
+| `scripts/scraper.py` | 课程/资源解析 |
+| `scripts/zotero_sync.py` | 下载器 + RIS 生成 |
+| `scripts/generate_report.py` | HTML 对比报告 (原图 vs AI 分析) |
+
+## 价格参考
+
+| 模型 | 单页均价 | 1028 页 |
+|------|:---:|:---:|
+| Qwen3.7-Plus | ~CNY 0.02 | ~CNY 25 |
+
+## 依赖
+
+- Python 3.9+
+- PowerPoint COM (Windows only, PPT→PDF 转换)
+- Zotero 9.x (笔记写入)
+- DashScope API (Qwen 视觉模型)

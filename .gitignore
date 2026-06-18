@@ -17,4 +17,8 @@ records/
 # Temp files
 *.tmp.m3u8
 *_hls_temp.*
-debug_*.html
+# pku-downloader
+downloads/
+*.analysis.json
+*.sqlite
+*.sqlite.bak
