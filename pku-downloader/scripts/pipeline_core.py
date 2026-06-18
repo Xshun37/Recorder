@@ -32,7 +32,7 @@ def _find_zotero_db():
     """Auto-detect Zotero database. Returns None if not found."""
     candidates = []
 
-    # 1. Env var
+    # 1. Env var (highest priority)
     env = os.getenv("ZOTERO_DB_PATH", "")
     if env:
         p = Path(env)
@@ -41,19 +41,43 @@ def _find_zotero_db():
 
     appdata = os.getenv("APPDATA", "")
 
-    # 2. Profile dirs
+    # 2. Standard profile dir under APPDATA
     if appdata:
         profiles = Path(appdata) / "Zotero" / "Zotero" / "Profiles"
         if profiles.exists():
-            for p in profiles.glob("*.default"):
+            for p in profiles.glob("*.default*"):
                 db = p / "zotero.sqlite"
                 if db.exists():
                     candidates.append(db)
 
-        # 3. Direct appdata
         direct = Path(appdata) / "Zotero" / "zotero.sqlite"
         if direct.exists():
             candidates.append(direct)
+
+    # 3. Scan drives D: through G: for common Zotero data dirs
+    import string
+    zotero_data_dirs = [
+        "Zotero",
+        "文献/Zotero",
+        "Documents/Zotero",
+    ]
+    for drive_letter in "DEFG":
+        for data_dir in zotero_data_dirs:
+            # Profile -> zotero.sqlite
+            profiles = Path(f"{drive_letter}:\\{data_dir}") / "Profiles"
+            if profiles.exists():
+                for p in profiles.glob("*.default*"):
+                    db = p / "zotero.sqlite"
+                    if db.exists():
+                        candidates.append(db)
+            # Direct zotero.sqlite
+            db = Path(f"{drive_letter}:\\{data_dir}") / "zotero.sqlite"
+            if db.exists():
+                candidates.append(db)
+        # Also F:\文献\zotero.sqlite (bare, no Zotero wrapper)
+        db = Path(f"{drive_letter}:\\文献\\zotero.sqlite")
+        if db.exists():
+            candidates.append(db)
 
     if candidates:
         return max(candidates, key=lambda p: p.stat().st_mtime)
@@ -135,9 +159,13 @@ def db_import_file(file_path, course_name, folder_path=""):
     title = f"{course_name} - {stem}" if course_name else stem
     cur.execute("SELECT fieldID FROM fields WHERE fieldName='title'")
     fid = cur.fetchone()[0]
-    cur.execute("INSERT INTO itemDataValues (value) VALUES (?)", (title,))
-    vid = cur.lastrowid
-    cur.execute("INSERT INTO itemData (itemID,fieldID,valueID) VALUES (?,?,?)", (parent_id, fid, vid))
+    cur.execute("INSERT OR IGNORE INTO itemDataValues (value) VALUES (?)", (title,))
+    if cur.lastrowid:
+        vid = cur.lastrowid
+    else:
+        cur.execute("SELECT valueID FROM itemDataValues WHERE value = ?", (title,))
+        vid = cur.fetchone()[0]
+    cur.execute("INSERT OR IGNORE INTO itemData (itemID,fieldID,valueID) VALUES (?,?,?)", (parent_id, fid, vid))
 
     # Note with source info
     note_text = f'<div class="zotero-note znv1"><p>来源: PKU 教学网 | 课程: {course_name or ""} | 文件夹: {folder_path or ""}</p></div>'

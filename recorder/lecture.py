@@ -32,7 +32,7 @@ RECORDS = BASE / "records"
 RECORDS.mkdir(exist_ok=True)
 
 # 复用项目内 ffmpeg
-FFMPEG = str(BASE / "ffmpeg.exe")
+FFMPEG = str(BASE.parent / "ffmpeg.exe")
 if not Path(FFMPEG).exists():
     FFMPEG = "ffmpeg"  # fallback to PATH
 
@@ -364,7 +364,10 @@ def main():
             if arg == "--course-id" and i + 1 < len(sys.argv): course_id = sys.argv[i + 1]
         if not token:
             print("需要 --token 参数"); sys.exit(1)
-        cn, videos = get_video_list(course_id=course_id or "_95474_1")
+        cn, videos = get_video_list(course_id=course_id)
+        if not videos:
+            print(f"课程 {course_id or '未知'} 无视频")
+            sys.exit(1)
         v_info = next((v for v in videos if v["token"] == token), None)
         if v_info is None:
             payload = decode_jwt(token)

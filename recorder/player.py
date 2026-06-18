@@ -20,9 +20,9 @@ from selenium.common.exceptions import TimeoutException, NoSuchElementException
 
 BASE = Path(__file__).resolve().parent
 COURSE_HOST = "https://course.pku.edu.cn"
-FFMPEG = str(BASE / "ffmpeg.exe")
+FFMPEG = str(BASE.parent / "ffmpeg.exe")
 if not Path(FFMPEG).exists():
-    FFMPEG = "ffmpeg"
+    FFMPEG = "ffmpeg"  # fallback to PATH
 
 
 def _load_cookies():
