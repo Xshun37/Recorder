@@ -4,6 +4,21 @@ import requests
 import time
 from pathlib import Path
 
+# 加载项目根 .env
+_dp = Path(__file__).resolve().parent
+for _ in range(5):
+    _e = _dp / ".env"
+    if _e.exists():
+        for _ln in _e.read_text(encoding="utf-8").splitlines():
+            _ln = _ln.strip()
+            if _ln and not _ln.startswith("#") and "=" in _ln:
+                _k, _v = _ln.split("=", 1)
+                _k, _v = _k.strip(), _v.strip().strip('"').strip("'")
+                if "xxx" not in _v and "你的" not in _v:
+                    os.environ.setdefault(_k, _v)
+        break
+    _dp = _dp.parent
+
 # -----------------------------
 # 配置与全局变量
 # -----------------------------

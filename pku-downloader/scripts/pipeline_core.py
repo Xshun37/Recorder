@@ -132,55 +132,77 @@ def db_gen_key(existing):
         k = ''.join(random.choices(KEY_CHARS, k=8))
         if k not in existing: return k
 
-def db_import_file(file_path, course_name, folder_path=""):
-    """Write a file into Zotero DB directly (skip RIS). Returns parentItemID or None."""
+# ==================== DB lookup ====================
+def db_find_parent_by_file(file_path):
+    """
+    在 Zotero DB 中查找引用指定文件的条目（RIS 导入后创建）。
+    返回 parentItemID 或 None。
+    """
     if not ZOTERO_DB:
         return None
+    fname = Path(file_path).name
     db = sqlite3.connect(str(ZOTERO_DB))
     cur = db.cursor()
-    fp = str(Path(file_path).resolve()).replace("\\", "/")
-    fname = Path(file_path).name
-    stem = Path(file_path).stem
-
-    # Get library ID
-    cur.execute("SELECT libraryID FROM items LIMIT 1")
+    # 附件 path 可能是 "storage:xxx" 或绝对路径
+    cur.execute("""
+        SELECT IA.parentItemID FROM itemAttachments IA
+        WHERE IA.path LIKE ? OR IA.path = ?
+    """, (f"%{fname}", f"storage:{fname}"))
     row = cur.fetchone()
-    lib_id = row[0] if row else 1
+    db.close()
+    return row[0] if row else None
 
-    keys = db_get_keys(cur)
-    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-    # Create parent item (journalArticle type for lecture material)
-    parent_key = db_gen_key(keys); keys.add(parent_key)
-    cur.execute("INSERT INTO items (itemTypeID,dateAdded,dateModified,clientDateModified,libraryID,key,version,synced) VALUES (22,?,?,?,?,?,0,0)", (now,now,now,lib_id,parent_key))
-    parent_id = cur.lastrowid
+def db_ensure_collections(file_path, course_name):
+    """
+    确保 Zotero 中存在 'PKU教学网 → 课程名' 子分类，并把匹配到的条目归入。
+    （仅在 db_find_parent_by_file 找到条目时调用，避免空条目）
+    """
+    if not ZOTERO_DB or not course_name:
+        return
+    pid = db_find_parent_by_file(file_path)
+    if not pid:
+        return
+    db = sqlite3.connect(str(ZOTERO_DB))
+    cur = db.cursor()
+    cur.execute("SELECT libraryID FROM items LIMIT 1")
+    lib_id = cur.fetchone()[0]
 
-    # Title
-    title = f"{course_name} - {stem}" if course_name else stem
-    cur.execute("SELECT fieldID FROM fields WHERE fieldName='title'")
-    fid = cur.fetchone()[0]
-    cur.execute("INSERT OR IGNORE INTO itemDataValues (value) VALUES (?)", (title,))
-    if cur.lastrowid:
-        vid = cur.lastrowid
+    # 查找或创建 "PKU教学网" 父 collection
+    cur.execute("SELECT collectionID FROM collections WHERE collectionName = 'PKU教学网' AND libraryID = ?", (lib_id,))
+    r = cur.fetchone()
+    if r:
+        parent_col_id = r[0]
     else:
-        cur.execute("SELECT valueID FROM itemDataValues WHERE value = ?", (title,))
-        vid = cur.fetchone()[0]
-    cur.execute("INSERT OR IGNORE INTO itemData (itemID,fieldID,valueID) VALUES (?,?,?)", (parent_id, fid, vid))
+        k = ''.join(random.choices(KEY_CHARS, k=8))
+        cur.execute("INSERT INTO collections (collectionName, libraryID, key, version, synced) VALUES ('PKU教学网', ?, ?, 0, 0)", (lib_id, k))
+        parent_col_id = cur.lastrowid
 
-    # Note with source info
-    note_text = f'<div class="zotero-note znv1"><p>来源: PKU 教学网 | 课程: {course_name or ""} | 文件夹: {folder_path or ""}</p></div>'
-    note_key = db_gen_key(keys); keys.add(note_key)
-    cur.execute("INSERT INTO items (itemTypeID,dateAdded,dateModified,clientDateModified,libraryID,key,version,synced) VALUES (28,?,?,?,?,?,0,0)", (now,now,now,lib_id,note_key))
-    cur.execute("INSERT INTO itemNotes (itemID,parentItemID,note,title) VALUES (?,?,?,?)", (cur.lastrowid, parent_id, note_text, "Source"))
+    # 查找或创建课程子 collection
+    cur.execute("SELECT collectionID FROM collections WHERE collectionName = ? AND parentCollectionID = ?", (course_name, parent_col_id))
+    r = cur.fetchone()
+    if r:
+        col_id = r[0]
+    else:
+        k = ''.join(random.choices(KEY_CHARS, k=8))
+        cur.execute("INSERT INTO collections (collectionName, parentCollectionID, libraryID, key, version, synced) VALUES (?, ?, ?, ?, 0, 0)",
+                    (course_name, parent_col_id, lib_id, k))
+        col_id = cur.lastrowid
 
-    # Attachment PDF
-    att_key = db_gen_key(keys); keys.add(att_key)
-    cur.execute("INSERT INTO items (itemTypeID,dateAdded,dateModified,clientDateModified,libraryID,key,version,synced) VALUES (3,?,?,?,?,?,0,0)", (now,now,now,lib_id,att_key))
-    att_id = cur.lastrowid
-    cur.execute("INSERT INTO itemAttachments (itemID,parentItemID,linkMode,contentType,path) VALUES (?,?,1,'application/pdf',?)", (att_id, parent_id, f"storage:{fname}"))
+    cur.execute("INSERT OR IGNORE INTO collectionItems (collectionID, itemID) VALUES (?, ?)", (col_id, pid))
+    db.commit()
+    db.close()
 
-    db.commit(); db.close()
-    return parent_id
+
+# 替换旧 db_import_file，保持 main.py 兼容
+def db_import_file(file_path, course_name, folder_path=""):
+    """
+    兼容接口：不再创建 Zotero 条目。仅确保 collection 存在并返回已导入的 pid。
+    """
+    if not ZOTERO_DB:
+        return None
+    db_ensure_collections(file_path, course_name)
+    return db_find_parent_by_file(file_path)
 
 # ==================== PPT -> PDF ====================
 def ppt_to_pdf(ppt_path, out_dir):
