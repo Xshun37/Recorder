@@ -170,7 +170,8 @@ def main():
         print(f"{'='*60}")
         pdfs_to_analyze = scan_pdfs(force=args.force)
         for fp, pid, fname in pdfs_to_analyze:
-            print(f"  [{pid}] {fname}")
+            pid_str = pid or "(no Zotero)"
+            print(f"  [{pid_str}] {fname}")
         print(f"  To analyze: {len(pdfs_to_analyze)} PDFs")
 
         if args.skip_analysis:

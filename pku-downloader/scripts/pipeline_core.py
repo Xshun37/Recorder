@@ -29,14 +29,19 @@ for _ in range(5):
     _env_dir = _env_dir.parent
 
 def _find_zotero_db():
-    """Auto-detect Zotero database, or use env var."""
-    env = os.getenv("ZOTERO_DB_PATH", "")
-    if env and Path(env).exists():
-        return Path(env)
-
-    # Scan default profile locations
+    """Auto-detect Zotero database. Returns None if not found."""
     candidates = []
+
+    # 1. Env var
+    env = os.getenv("ZOTERO_DB_PATH", "")
+    if env:
+        p = Path(env)
+        if p.exists() and p.stat().st_size > 0:
+            return p
+
     appdata = os.getenv("APPDATA", "")
+
+    # 2. Profile dirs
     if appdata:
         profiles = Path(appdata) / "Zotero" / "Zotero" / "Profiles"
         if profiles.exists():
@@ -44,18 +49,34 @@ def _find_zotero_db():
                 db = p / "zotero.sqlite"
                 if db.exists():
                     candidates.append(db)
-        # Also check direct Zotero data dir
+
+        # 3. Direct appdata
         direct = Path(appdata) / "Zotero" / "zotero.sqlite"
         if direct.exists():
             candidates.append(direct)
 
+    # 4. Known custom paths (non-default Zotero data directory)
+    for d in ("F:/文献/zotero.sqlite", "D:/data/zotero.sqlite"):
+        db = Path(d)
+        if db.exists() and db.stat().st_size > 0:
+            candidates.append(db)
+
     if candidates:
-        return max(candidates, key=lambda p: p.stat().st_mtime)  # newest
+        return max(candidates, key=lambda p: p.stat().st_mtime)
     return None
 
 ZOTERO_DB = _find_zotero_db()
-if not ZOTERO_DB:
-    print("[WARN] Zotero DB not found. Set ZOTERO_DB_PATH env var or ensure Zotero is installed.")
+if ZOTERO_DB:
+    # 验证 DB 确实有 Zotero 表结构
+    try:
+        db = sqlite3.connect(str(ZOTERO_DB))
+        db.execute("SELECT 1 FROM items LIMIT 1")
+        db.close()
+    except sqlite3.OperationalError:
+        print("[WARN] Found file at Zotero path but it is not a valid Zotero DB. Ignoring.")
+        ZOTERO_DB = None
+else:
+    print("[WARN] Zotero DB not found. Zotero integration disabled.")
 API_KEY = os.getenv("QWEN_API_KEY", "")
 BASE_URL = "https://dashscope.aliyuncs.com/compatible-mode/v1"
 MODEL = "qwen3.7-plus"
@@ -94,7 +115,9 @@ def db_gen_key(existing):
         if k not in existing: return k
 
 def db_import_file(file_path, course_name, folder_path=""):
-    """Write a file into Zotero DB directly (skip RIS). Returns parentItemID."""
+    """Write a file into Zotero DB directly (skip RIS). Returns parentItemID or None."""
+    if not ZOTERO_DB:
+        return None
     db = sqlite3.connect(str(ZOTERO_DB))
     cur = db.cursor()
     fp = str(Path(file_path).resolve()).replace("\\", "/")
@@ -289,6 +312,8 @@ def _md_to_html(md):
 # ==================== Zotero note write ====================
 def write_note_to_zotero(parent_id, title, results):
     """Write merged analysis note to a Zotero item."""
+    if not ZOTERO_DB or not parent_id:
+        return
     db = sqlite3.connect(str(ZOTERO_DB))
     cur = db.cursor()
 
