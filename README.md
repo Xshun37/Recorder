@@ -107,9 +107,7 @@ records/
 | `transcribe_s.py` | Whisper 转录 + 去噪 + 繁转简 |
 | `summarize.py` | DeepSeek 学术笔记生成 |
 | `make_md.py` | Markdown 格式化输出 |
-| `record.py` | ffmpeg 系统音频录制 (Stream 模式) |
-| `main.py` | 旧版入口 (仅 Stream) |
-| `que.py` | 交互式问答 (基于笔记) |
+| `record.py` | ffmpeg 系统音频录制工具 (Stream 模式底层) |
 
 ## FAQ
 
