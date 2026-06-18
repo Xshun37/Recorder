@@ -65,6 +65,29 @@ def interactive_select_courses():
     return selected
 
 
+def scan_pdfs(force=False):
+    """扫描 downloads/ 下所有 PDF，跳过已有 .analysis.json 的（除非 force）。"""
+    import os
+    from zotero_sync import DOWNLOAD_DIR
+    from pipeline_core import db_import_file
+
+    result = []
+    for root, dirs, files in os.walk(DOWNLOAD_DIR):
+        for f in files:
+            if not f.lower().endswith('.pdf'): continue
+            if "annotated" in f.lower(): continue
+            fp = Path(root) / f
+            if not force and fp.with_suffix('.analysis.json').exists():
+                continue
+            rel = fp.relative_to(DOWNLOAD_DIR)
+            parts = rel.parts
+            course = parts[0] if len(parts) > 1 else ""
+            folder = "/".join(parts[1:-1]) if len(parts) > 2 else ""
+            pid = db_import_file(fp, course, folder)
+            result.append((fp, pid, f))
+    return result
+
+
 def download_course(course):
     """下载单个课程的所有资源。只下载新增/更新的文件。"""
     from auth import get_session
@@ -88,31 +111,19 @@ def main():
     p.add_argument("--all", action="store_true", help="全部课程")
     p.add_argument("--skip-analysis", action="store_true", help="只下载，不分析")
     p.add_argument("--analysis-only", action="store_true", help="对已下载 PDF 直接分析")
+    p.add_argument("--force", action="store_true", help="重新分析已有 analysis.json 的文件")
     p.add_argument("--concurrency", type=int, default=12, help="Qwen API 并发数")
     args = p.parse_args()
 
     # ---- 选课程 ----
     if args.analysis_only:
-        import os
         print("=" * 60)
         print("Analysis-only mode: scanning downloads/ for PDFs...")
         print("=" * 60)
 
-        pdfs_to_analyze = []
-        from zotero_sync import DOWNLOAD_DIR
-        from pipeline_core import db_import_file
-        for root, dirs, files in os.walk(DOWNLOAD_DIR):
-            for f in files:
-                if not f.lower().endswith('.pdf'): continue
-                if "annotated" in f.lower(): continue
-                fp = Path(root) / f
-                rel = fp.relative_to(DOWNLOAD_DIR)
-                parts = rel.parts
-                course = parts[0] if len(parts) > 1 else ""
-                folder = "/".join(parts[1:-1]) if len(parts) > 2 else ""
-                pid = db_import_file(fp, course, folder)
-                pdfs_to_analyze.append((fp, pid, f))
-                print(f"  [{pid}] {f}")
+        pdfs_to_analyze = scan_pdfs(force=args.force)
+        for fp, pid, fname in pdfs_to_analyze:
+            print(f"  [{pid}] {fname}")
     else:
         from scraper import get_courses, Course
 
@@ -157,23 +168,10 @@ def main():
         print(f"\n{'='*60}")
         print(f"Step 3: Import PDFs into Zotero")
         print(f"{'='*60}")
-        import os
-        from pipeline_core import db_import_file
-
-        pdfs_to_analyze = []
-        for root, dirs, files in os.walk(DOWNLOAD_DIR):
-            for f in files:
-                if not f.lower().endswith('.pdf'): continue
-                if "annotated" in f.lower(): continue
-                fp = Path(root) / f
-                rel = fp.relative_to(DOWNLOAD_DIR)
-                parts = rel.parts
-                course = parts[0] if len(parts) > 1 else ""
-                folder = "/".join(parts[1:-1]) if len(parts) > 2 else ""
-                pid = db_import_file(fp, course, folder)
-                pdfs_to_analyze.append((fp, pid, f))
-                print(f"  [{pid}] {f}")
-        print(f"  Imported: {len(pdfs_to_analyze)} PDFs")
+        pdfs_to_analyze = scan_pdfs(force=args.force)
+        for fp, pid, fname in pdfs_to_analyze:
+            print(f"  [{pid}] {fname}")
+        print(f"  To analyze: {len(pdfs_to_analyze)} PDFs")
 
         if args.skip_analysis:
             print("\n[SKIP] Analysis.")
