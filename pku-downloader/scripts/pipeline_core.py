@@ -55,12 +55,6 @@ def _find_zotero_db():
         if direct.exists():
             candidates.append(direct)
 
-    # 4. Known custom paths (non-default Zotero data directory)
-    for d in ("F:/文献/zotero.sqlite", "D:/data/zotero.sqlite"):
-        db = Path(d)
-        if db.exists() and db.stat().st_size > 0:
-            candidates.append(db)
-
     if candidates:
         return max(candidates, key=lambda p: p.stat().st_mtime)
     return None
